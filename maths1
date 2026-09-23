@@ -1,0 +1,207 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.util.ArrayList;
+import java.util.Random;
+
+public class CarRaceGame extends JFrame {
+
+    public CarRaceGame() {
+        setTitle("2D Car Racing Game");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setResizable(false);
+        
+        GamePanel gamePanel = new GamePanel();
+        add(gamePanel);
+        pack();
+        
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+
+    public static void main(String[] args) {
+        // Run the GUI code on the Event Dispatch Thread
+        SwingUtilities.invokeLater(() -> new CarRaceGame());
+    }
+}
+
+class GamePanel extends JPanel implements ActionListener, KeyListener {
+    private final int BOARD_WIDTH = 400;
+    private final int BOARD_HEIGHT = 600;
+    private final int CAR_WIDTH = 50;
+    private final int CAR_HEIGHT = 80;
+
+    // Player variables
+    private int playerX = 175; // Centered initially
+    private final int playerY = 480; // Fixed near the bottom
+    private final int playerSpeed = 15;
+
+    // Game state
+    private boolean gameOver = false;
+    private int score = 0;
+    private int speedMilestone = 10;
+    private Timer timer;
+    private ArrayList<Rectangle> obstacles;
+    private int obstacleSpeed = 5;
+    private int spawnDelay = 0;
+    private final Random random;
+
+    public GamePanel() {
+        setPreferredSize(new Dimension(BOARD_WIDTH, BOARD_HEIGHT));
+        setBackground(Color.GRAY);
+        setFocusable(true);
+        addKeyListener(this);
+
+        obstacles = new ArrayList<>();
+        random = new Random();
+
+        // Game loop timer (updates roughly every 16ms ~ 60 FPS)
+        timer = new Timer(16, this);
+        timer.start();
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        
+        // Draw Road Boundaries / Grass sides
+        g.setColor(Color.DARK_GRAY);
+        g.fillRect(50, 0, 300, BOARD_HEIGHT);
+        g.setColor(Color.GREEN);
+        g.fillRect(0, 0, 50, BOARD_HEIGHT);
+        g.fillRect(350, 0, 50, BOARD_HEIGHT);
+
+        // Draw Road Lines (static placeholder lines)
+        g.setColor(Color.WHITE);
+        for (int i = 0; i < BOARD_HEIGHT; i += 40) {
+            g.fillRect(195, i, 10, 20);
+        }
+
+        // Draw Player Car (Red)
+        g.setColor(Color.RED);
+        g.fillRect(playerX, playerY, CAR_WIDTH, CAR_HEIGHT);
+        // Wheels and details
+        g.setColor(Color.BLACK);
+        g.fillRect(playerX - 5, playerY + 10, 5, 15);
+        g.fillRect(playerX + CAR_WIDTH, playerY + 10, 5, 15);
+        g.fillRect(playerX - 5, playerY + 55, 5, 15);
+        g.fillRect(playerX + CAR_WIDTH, playerY + 55, 5, 15);
+
+        // Draw Oncoming Obstacles (Green)
+        g.setColor(Color.GREEN.darker());
+        for (Rectangle obs : obstacles) {
+            g.fillRect(obs.x, obs.y, obs.width, obs.height);
+            // Wheels for obstacle cars
+            g.setColor(Color.BLACK);
+            g.fillRect(obs.x - 5, obs.y + 10, 5, 15);
+            g.fillRect(obs.x + obs.width, obs.y + 10, 5, 15);
+            g.fillRect(obs.x - 5, obs.y + 55, 5, 15);
+            g.fillRect(obs.x + obs.width, obs.y + 55, 5, 15);
+            g.setColor(Color.GREEN.darker());
+        }
+
+        // HUD - Score board
+        g.setColor(Color.WHITE);
+        g.setFont(new Font("Arial", Font.BOLD, 20));
+        g.drawString("Score: " + score, 65, 30);
+
+        // Game Over Overlay
+        if (gameOver) {
+            g.setColor(new Color(0, 0, 0, 150));
+            g.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+            
+            g.setColor(Color.RED);
+            g.setFont(new Font("Arial", Font.BOLD, 40));
+            g.drawString("GAME OVER", BOARD_WIDTH / 2 - 120, BOARD_HEIGHT / 2 - 20);
+            
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.PLAIN, 18));
+            g.drawString("Press 'R' to Restart", BOARD_WIDTH / 2 - 80, BOARD_HEIGHT / 2 + 20);
+        }
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (!gameOver) {
+            // Move obstacles downwards
+            for (int i = 0; i < obstacles.size(); i++) {
+                Rectangle obs = obstacles.get(i);
+                obs.y += obstacleSpeed;
+
+                // Check if obstacle passed the screen edge
+                if (obs.y > BOARD_HEIGHT) {
+                    obstacles.remove(i);
+                    i--;
+                    score++;
+                    
+                    // Progressively increase difficulty/speed
+                    if (score >= speedMilestone) {
+                        obstacleSpeed += 1;
+                        speedMilestone += 10;
+                    }
+                }
+            }
+
+            // Spawn new obstacle cars periodically
+            spawnDelay++;
+            if (spawnDelay >= 70) { // spacing between cars
+                // Spawn within the driving lanes (X limits: 50 to 350-CAR_WIDTH)
+                int laneX = 55 + random.nextInt(300 - CAR_WIDTH - 10);
+                obstacles.add(new Rectangle(laneX, -CAR_HEIGHT, CAR_WIDTH, CAR_HEIGHT));
+                spawnDelay = 0;
+            }
+
+            // Collision check
+            Rectangle playerBound = new Rectangle(playerX, playerY, CAR_WIDTH, CAR_HEIGHT);
+            for (Rectangle obs : obstacles) {
+                if (playerBound.intersects(obs)) {
+                    gameOver = true;
+                    timer.stop();
+                }
+            }
+            
+            repaint();
+        }
+    }
+
+    @Override
+    public void keyPressed(KeyEvent e) {
+        int key = e.getKeyCode();
+
+        if (!gameOver) {
+            // Handle Side to side movements with boundary collision check
+            if (key == KeyEvent.VK_LEFT && playerX > 55) {
+                playerX -= playerSpeed;
+            }
+            if (key == KeyEvent.VK_RIGHT && playerX < 345 - CAR_WIDTH) {
+                playerX += playerSpeed;
+            }
+        } else {
+            // Restart key
+            if (key == KeyEvent.VK_R) {
+                restartGame();
+            }
+        }
+        repaint();
+    }
+
+    private void restartGame() {
+        playerX = 175;
+        obstacles.clear();
+        score = 0;
+        obstacleSpeed = 5;
+        speedMilestone = 10;
+        spawnDelay = 0;
+        gameOver = false;
+        timer.start();
+    }
+
+    @Override
+    public void keyTyped(KeyEvent e) {}
+
+    @Override
+    public void keyReleased(KeyEvent e) {}
+}
